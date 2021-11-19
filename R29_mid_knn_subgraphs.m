@@ -1,0 +1,309 @@
+% Low - BS >0 and High - BS>0 edges are good. knn subgraphs of energy
+
+
+chlist = [1:25 28];%[1 3 4 8 12 13 2 6 7 11 15 16];%[1:25 28];
+ %% (1) load graphs, edge = midVOT
+chlist = [1:25 28];
+miVOT456 = load('mi_matrix_VOT456_K4.mat'); %with mem 2
+np = 22; %number of people 21 undergrads, 1 aphasia
+nwin = 43;
+nch = length(chlist);
+ntim = [1 51 101:5:301];
+ntim = [101:5:301]*2-202;
+% creating the adjacency matrices, with edge = VOT123, only
+% positive increases diff_mid_lowVOT
+diff_midVOT = zeros(np,nch,nch,nwin-2);
+% remove the negative values after bias correction
+for ipat = 1:np
+    for iwin = 1:nwin
+        mi456 = miVOT456.mi_matrix_VOT456_K4{ipat,1}{iwin,1};
+        mi456(mi456<0)=0;
+        miVOT456.mi_matrix_VOT456_K4{ipat,1}{iwin,1} = mi456;
+    end
+end
+
+for ipat = 1:np
+    mi456 = miVOT456.mi_matrix_VOT456_K4{ipat,1}; %contains 43 time windows
+    for iwin = 3:nwin
+       mat2 = squeeze(mi456{iwin,1} - mi456{1,1}); 
+       mat = squeeze(mat2);
+       diff_midVOT(ipat,:,:,iwin-2) = mat(chlist,chlist);
+    end
+
+end
+
+nwin = nwin-2;
+
+diff_midVOT(diff_midVOT<0)=0; %< is the right one
+diff_midVOT = abs(diff_midVOT);
+mid_VOT_energy = zeros(np,nwin);
+
+for iwin = 1:41
+   % figure;hold on;
+    for ipat = 1:np
+        
+        mat = squeeze(diff_midVOT(ipat,:,:,iwin));
+     %   bar(ipat,norm(mat,'fro'));
+        mid_VOT_energy(ipat,iwin) = norm(mat,'fro');
+    end
+end
+
+%let's plot the energy of baseline normalized graphs
+figure;
+for i = 1:np-1
+    plot(ntim,mid_VOT_energy(i,:),'b-*','LineWidth',4);
+    hold on;
+end
+plot(ntim,mid_VOT_energy(np,:),'r-*','LineWidth',4);
+ylabel('Frobenius norm');
+xlabel('Time');
+title('Energy of matrices: (MidVOT- BS) >0');
+%title('Energy of matrices: (LowVOT- BS) <0');
+
+%% statistics for mid
+X1 = mid_VOT_energy;
+
+stats = zeros(1,nwin);
+stats_m_bs = zeros(1,np);
+stats_mid_gt_bs = zeros(np,nwin);
+
+for ipat = 1:np
+    pat_list = 1:np;
+    pat_list(ipat)=[];
+    for iwin = 1:nwin
+        [h,p, t, df] =  ttestch(mean(X1(pat_list,iwin)), std(X1(pat_list,iwin)), X1(ipat,iwin), np-1, 0.05);
+        stats(iwin) = p;
+        
+    end
+    stats = fdr(stats);
+    fprintf('mid_less_BS %d, numb of p<0.05 = %d\n',ipat, sum(stats<0.05));
+    stats_m_bs(ipat) = sum(stats<0.05);
+    stats_mid_gt_bs(ipat,:) = stats<0.05;
+end
+
+figure;
+imagesc(ntim, 1:22,stats_mid_gt_bs);
+title('Significant values Mid-BS>0');
+xlabel('Time');
+ylabel('Subjects');
+ax = gca;
+ax.XGrid = 'on'
+grid minor;
+axis square;
+colorbar;
+
+% %% knn subgraphs
+% 
+% load('ChanNamesandLocs.mat');
+% chnames = chanNamesLocs(:,1);
+% chnames = chnames(chlist);
+% 
+% % G = graph(mask);%,chnames);
+% % plot(G,'XData',cell2mat(chanNamesLocs(chlist,2)),'YData',cell2mat(chanNamesLocs(chlist,3)),'ZData',cell2mat(chanNamesLocs(chlist,4)))
+% 
+% imp_ch_centers = zeros(length(4:25),length(chlist));
+% for k_n = 4:25
+% %X = cell2mat(chanNamesLocs(1,2:4));
+% X = cell2mat(chanNamesLocs([1:25 28],2:4));
+% %figure; imagesc(squareform(pdist(X)));
+% %colormap jet; colorbar;
+% dMat = squareform(pdist(X));
+% nearestNeighbors = cell(1,length(chlist));
+% for inode = 1:length(chlist)
+%     vec = dMat(inode,:);
+%     [val,ind] = sort(vec);
+%     nearestNeighbors{inode} = ind(1:k_n);
+% end
+%     
+% 
+% % find energy for each subplot
+% 
+% for inode = 1:length(chlist)
+%     
+%     low_VOT_energy = zeros(np,nwin);
+%     for iwin = 1:41
+%        % figure;hold on;
+%         for ipat = 1:np
+% 
+%             mat = squeeze(diff_lowVOT(ipat,:,:,iwin));
+%             mat = mat(nearestNeighbors{inode},nearestNeighbors{inode});
+%             low_VOT_energy(ipat,iwin) = norm(mat,'fro');
+%         end
+%     end
+%     
+% %     figure;
+% %     subplot(2,1,1);
+% %     for i = 1:np-1
+% %         plot(ntim,low_VOT_energy(i,:),'b-*','LineWidth',4);
+% %         hold on;
+% %     end
+% %     plot(ntim,low_VOT_energy(np,:),'r-*','LineWidth',4);
+% %     ylabel('Frobenius norm');
+% %     xlabel('Time');
+% %     str = sprintf('Energy of subgraph centered around %d',inode);
+% %     title(str);
+%     
+%     %subplot(2,1,2);
+%         X1 = low_VOT_energy;
+% 
+%     stats = zeros(1,nwin);
+%     stats_l_bs = zeros(1,np);
+%     stats_low_gt_bs = zeros(np,nwin);
+% 
+%     for ipat = 1:np
+%         pat_list = 1:np;
+%         pat_list(ipat)=[];
+%         for iwin = 1:nwin
+%             [h,p, t, df] =  ttestch(mean(X1(pat_list,iwin)), std(X1(pat_list,iwin)), X1(ipat,iwin), np-1, 0.05);
+%             stats(iwin) = p;
+% 
+%         end
+%         stats = fdr(stats);
+%         %fprintf('low_less_BS %d, numb of p<0.05 = %d\n',ipat, sum(stats<0.05));
+%         stats_l_bs(ipat) = sum(stats<0.05);
+%         stats_low_gt_bs(ipat,:) = stats<0.05;
+%     end
+% 
+% %     imagesc(ntim, 1:22,stats_low_gt_bs);
+% %     str = sprintf('Significant values %d',sum(stats_low_gt_bs(end,:)));
+% %     title(str);
+% %     xlabel('Time');
+% %     ylabel('Subjects');
+% %     ax = gca;
+% %     ax.XGrid = 'on'
+% %     grid minor;
+% %     axis square;
+% %     colorbar;
+% 
+%     imp_ch_centers(k_n-3,inode)=sum(stats_low_gt_bs(end,:));
+% end
+% 
+% 
+% end
+% 
+% figure; imagesc(imp_ch_centers);
+% 
+% thresh_imp = imp_ch_centers;
+% thresh_imp(thresh_imp<35)=0;
+% 
+% figure; imagesc(thresh_imp)
+
+%% look at individual knn subgraphs
+
+k_n = 4;
+%X = cell2mat(chanNamesLocs(1,2:4));
+X = cell2mat(chanNamesLocs([1:25 28],2:4));
+%figure; imagesc(squareform(pdist(X)));
+%colormap jet; colorbar;
+dMat = squareform(pdist(X));
+nearestNeighbors = cell(1,length(chlist));
+for inode = 1:length(chlist)
+    vec = dMat(inode,:);
+    [val,ind] = sort(vec);
+    nearestNeighbors{inode} = ind(1:k_n);
+end
+    
+
+% find energy for each subplot
+
+sig_windows_aphasia = zeros(length(chlist),nwin);
+for inode = 1:length(chlist)
+    
+    high_VOT_energy = zeros(np,nwin);
+    for iwin = 1:41
+        for ipat = 1:np
+            mat = squeeze(diff_midVOT(ipat,:,:,iwin));
+            mat = mat(nearestNeighbors{inode},nearestNeighbors{inode});
+            high_VOT_energy(ipat,iwin) = norm(mat,'fro');
+        end
+    end
+    
+    figure;
+    subplot(2,1,1);
+    for i = 1:np-1
+        plot(ntim,high_VOT_energy(i,:),'b-*','LineWidth',4);
+        hold on;
+    end
+    plot(ntim,high_VOT_energy(np,:),'r-*','LineWidth',4);
+    ylabel('Frobenius norm');
+    xlabel('Time');
+    str = sprintf('Energy of subgraph centered around %d',inode);
+    title(str);
+    
+    subplot(2,1,2);
+    X1 = high_VOT_energy;
+
+    stats = zeros(1,nwin);
+    stats_m_bs = zeros(1,np);
+    stats_mid_gt_bs = zeros(np,nwin);
+
+    for ipat = 1:np
+        pat_list = 1:np;
+        pat_list(ipat)=[];
+        for iwin = 1:nwin
+            [h,p, t, df] =  ttestch(mean(X1(pat_list,iwin)), std(X1(pat_list,iwin)), X1(ipat,iwin), np-1, 0.05);
+            stats(iwin) = p;
+
+        end
+        stats = fdr(stats);
+        %fprintf('low_less_BS %d, numb of p<0.05 = %d\n',ipat, sum(stats<0.05));
+        stats_m_bs(ipat) = sum(stats<0.05);
+        stats_mid_gt_bs(ipat,:) = stats<0.05;
+    end
+
+    imagesc(ntim, 1:22,stats_mid_gt_bs);
+    sig_windows_aphasia(inode,:)=stats_mid_gt_bs(end,:);
+    str = sprintf('Significant values %d',sum(stats_mid_gt_bs(end,:)));
+    title(str);
+    xlabel('Time');
+    ylabel('Subjects');
+    ax = gca;
+    ax.XGrid = 'on'
+    grid minor;
+    axis square;
+    colorbar;
+
+end
+
+figure; %imagesc(sig_windows_aphasia)
+[r, c] = size(sig_windows_aphasia);                          % Get the matrix size
+imagesc((1:c)+0.5, (1:r)+0.5, sig_windows_aphasia);          % Plot the image
+%colormap(gray);                              % Use a gray colormap
+%axis equal                                   % Make axes grid sizes equal
+set(gca, 'XTick', 1:(c+1), 'YTick', 1:(r+1), ...  % Change some axes properties
+         'XLim', [1 c+1], 'YLim', [1 r+1], ...
+         'GridLineStyle', '-', 'XGrid', 'on', 'YGrid', 'on');
+%% fixed knn value and node, whats the subgraph plot?
+
+k_n = 4;
+
+nearestNeighbors = cell(1,length(chlist));
+for inode = 1:length(chlist)
+    vec = dMat(inode,:);
+    [val,ind] = sort(vec);
+    nearestNeighbors{inode} = ind(1:k_n);
+end
+    
+inode = 19;
+iwin = 20;
+ipat = np;
+figure;
+for iwin = 20%:41
+mat = squeeze(diff_midVOT(ipat,:,:,iwin));
+mat = mat(nearestNeighbors{inode},nearestNeighbors{inode});
+
+chl = nearestNeighbors{inode};
+
+empty_graph = zeros(length(chlist),length(chlist));
+empty_graph(chl,chl) = mat;
+
+G = graph(empty_graph,chnames);
+%G = graph(empty_graph);%,chnames);
+plot(G,'XData',cell2mat(chanNamesLocs(chlist,2)),'YData',cell2mat(chanNamesLocs(chlist,3)),'ZData',cell2mat(chanNamesLocs(chlist,4)))
+az=-90;
+ele = 90;
+view([az ele])
+waitforbuttonpress;
+end
+
+
